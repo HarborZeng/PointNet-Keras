@@ -3,6 +3,8 @@ from keras.callbacks import Callback, ModelCheckpoint
 import yaml
 import h5py
 import numpy as np
+import os
+
 
 class Step(Callback):
 
@@ -15,14 +17,14 @@ class Step(Callback):
         old_lr = K.get_value(self.model.optimizer.lr)
         K.set_value(self.model.optimizer.lr, new_lr)
         if self.verbose == 1:
-            print('Learning rate is %g' %new_lr)
+            print('Learning rate is %g' % new_lr)
 
     def on_epoch_begin(self, epoch, logs={}):
         for i, step in enumerate(self.steps):
             if epoch < step:
                 self.change_lr(self.lr[i])
                 return
-        self.change_lr(self.lr[i+1])
+        self.change_lr(self.lr[i + 1])
 
     def get_config(self):
         config = {'class': type(self).__name__,
@@ -38,6 +40,7 @@ class Step(Callback):
         return cls(steps, config['learning_rates'],
                    verbose=config.get('verbose', 0))
 
+
 class TriangularCLR(Callback):
 
     def __init__(self, learning_rates, half_cycle):
@@ -50,10 +53,10 @@ class TriangularCLR(Callback):
 
     def on_batch_begin(self, batch, logs={}):
         self.itr += 1
-        cycle = 1 + self.itr/int(2*self.hc)
-        x = self.itr - (2.*cycle - 1)*self.hc
+        cycle = 1 + self.itr / int(2 * self.hc)
+        x = self.itr - (2. * cycle - 1) * self.hc
         x /= self.hc
-        new_lr = self.lr[0] + (self.lr[1] - self.lr[0])*(1 - abs(x))/cycle
+        new_lr = self.lr[0] + (self.lr[1] - self.lr[0]) * (1 - abs(x)) / cycle
 
         K.set_value(self.model.optimizer.lr, new_lr)
 
@@ -75,12 +78,13 @@ class MetaCheckpoint(ModelCheckpoint):
                                              mode='auto', period=1)
 
         self.filepath = filepath
-        self.meta = meta or {'epochs': []}
+        self.meta = meta or {'epochs': [], 'val_acc': [0]}
 
         if training_args:
             self.meta['training_args'] = training_args
 
     def on_train_begin(self, logs={}):
+        self.best = max(self.meta['val_acc'])
         super(MetaCheckpoint, self).on_train_begin(logs)
 
     def on_epoch_end(self, epoch, logs={}):
@@ -89,6 +93,7 @@ class MetaCheckpoint(ModelCheckpoint):
         # Get statistics
         self.meta['epochs'].append(epoch)
         for k, v in logs.items():
+            print("k: {}, v: {}".format(k, v))
             # Get default gets the value or sets (and gets) the default value
             self.meta.setdefault(k, []).append(v)
 

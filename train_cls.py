@@ -1,10 +1,13 @@
+import h5py
+
 from data_loader import DataGenerator
 from model_cls import PointNet
-from keras.callbacks import ModelCheckpoint
+from callbacks import MetaCheckpoint
 from keras.optimizers import Adam
 from schedules import onetenth_50_75
 import os
 import matplotlib
+
 matplotlib.use('AGG')
 import matplotlib.pyplot as plt
 
@@ -48,8 +51,8 @@ def save_history(history, result_dir):
 
 def main():
     nb_classes = 40
-    train_file = './ModelNet40/ply_data_train.h5'
-    test_file = './ModelNet40/ply_data_test.h5'
+    train_file = './ModelNet40/train/ply_data_train0.h5'
+    test_file = './ModelNet40/test/ply_data_test1.h5'
 
     epochs = 100
     batch_size = 32
@@ -66,16 +69,40 @@ def main():
                   metrics=['accuracy'])
     if not os.path.exists('./results/'):
         os.mkdir('./results/')
-    checkpoint = ModelCheckpoint('./results/pointnet.h5', monitor='val_acc',
-                                 save_weights_only=True, save_best_only=True,
-                                 verbose=1)
+
+    import yaml
+
+    def load_meta(model_fname):
+        meta = {}
+        with h5py.File(model_fname, 'r') as f:
+            meta_group = f['meta']
+
+            meta['training_args'] = yaml.load(
+                meta_group.attrs['training_args'])
+            for k in meta_group.keys():
+                meta[k] = list(meta_group[k])
+
+        return meta
+
+    last_epoch = -1
+    last_meta = {}
+    if os.path.exists("./results/pointnet.h5"):
+        model.load_weights("./results/pointnet.h5")
+        last_meta = load_meta("./results/pointnet.h5")
+        last_epoch = last_meta.get('epochs')[-1]
+
+    checkpoint = MetaCheckpoint('./results/pointnet.h5', monitor='val_acc',
+                                save_weights_only=True, save_best_only=True,
+                                verbose=1, meta=last_meta)
+
     history = model.fit_generator(train.generator(),
-                                  steps_per_epoch=9840 // batch_size,
+                                  steps_per_epoch=2048 // batch_size,
                                   epochs=epochs,
                                   validation_data=val.generator(),
-                                  validation_steps=2468 // batch_size,
+                                  validation_steps=420 // batch_size,
                                   callbacks=[checkpoint, onetenth_50_75(lr)],
-                                  verbose=1)
+                                  verbose=1,
+                                  initial_epoch=last_epoch+1)
 
     plot_history(history, './results/')
     save_history(history, './results/')
