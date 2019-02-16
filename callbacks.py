@@ -93,7 +93,6 @@ class MetaCheckpoint(ModelCheckpoint):
         # Get statistics
         self.meta['epochs'].append(epoch)
         for k, v in logs.items():
-            print("k: {}, v: {}".format(k, v))
             # Get default gets the value or sets (and gets) the default value
             self.meta.setdefault(k, []).append(v)
 
