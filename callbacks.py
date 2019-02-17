@@ -72,19 +72,27 @@ class MetaCheckpoint(ModelCheckpoint):
                  save_best_only=False, save_weights_only=False,
                  mode='auto', period=1, training_args=None, meta=None):
 
-        super(MetaCheckpoint, self).__init__(filepath, monitor='val_loss',
-                                             verbose=0, save_best_only=False,
-                                             save_weights_only=False,
-                                             mode='auto', period=1)
+        super(MetaCheckpoint, self).__init__(filepath,
+                                             monitor=monitor,
+                                             verbose=verbose,
+                                             save_best_only=save_best_only,
+                                             save_weights_only=save_weights_only,
+                                             mode=mode,
+                                             period=period)
 
         self.filepath = filepath
-        self.meta = meta or {'epochs': [], 'val_acc': [0]}
+        self.meta = meta or {'epochs': [], self.monitor: []}
 
         if training_args:
             self.meta['training_args'] = training_args
 
     def on_train_begin(self, logs={}):
-        self.best = max(self.meta['val_acc'])
+        if self.save_best_only:
+            if 'acc' in self.monitor or self.monitor.startswith('fmeasure'):
+                self.best = max(self.meta[self.monitor], default=-np.Inf)
+            else:
+                self.best = min(self.meta[self.monitor], default=np.Inf)
+
         super(MetaCheckpoint, self).on_train_begin(logs)
 
     def on_epoch_end(self, epoch, logs={}):
@@ -99,12 +107,11 @@ class MetaCheckpoint(ModelCheckpoint):
         # Save to file
         filepath = self.filepath.format(epoch=epoch, **logs)
 
-        if self.epochs_since_last_save == 0:
+        if logs.get(self.monitor) == self.best and self.epochs_since_last_save == 0:
             with h5py.File(filepath, 'r+') as f:
                 meta_group = f.create_group('meta')
                 meta_group.attrs['training_args'] = yaml.dump(
                     self.meta.get('training_args', '{}'))
-                meta_group.create_dataset('epochs',
-                                          data=np.array(self.meta['epochs']))
+                meta_group.create_dataset('epochs', data=np.array(self.meta['epochs']))
                 for k in logs:
                     meta_group.create_dataset(k, data=np.array(self.meta[k]))

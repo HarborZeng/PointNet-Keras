@@ -51,8 +51,8 @@ def save_history(history, result_dir):
 
 def main():
     nb_classes = 40
-    train_file = './ModelNet40/train/ply_data_train0.h5'
-    test_file = './ModelNet40/test/ply_data_test1.h5'
+    train_file = './ModelNet40/ply_data_train.h5'
+    test_file = './ModelNet40/ply_data_test.h5'
 
     epochs = 100
     batch_size = 32
@@ -62,51 +62,60 @@ def main():
 
     model = PointNet(nb_classes)
     model.summary()
+
     lr = 0.0001
     adam = Adam(lr=lr)
     model.compile(optimizer=adam,
                   loss='categorical_crossentropy',
                   metrics=['accuracy'])
+
     if not os.path.exists('./results/'):
         os.mkdir('./results/')
 
-    import yaml
-
-    def load_meta(model_fname):
-        meta = {}
-        with h5py.File(model_fname, 'r') as f:
-            meta_group = f['meta']
-
-            meta['training_args'] = yaml.load(
-                meta_group.attrs['training_args'])
-            for k in meta_group.keys():
-                meta[k] = list(meta_group[k])
-
-        return meta
-
-    last_epoch = -1
-    last_meta = {}
-    if os.path.exists("./results/pointnet.h5"):
-        model.load_weights("./results/pointnet.h5")
-        last_meta = load_meta("./results/pointnet.h5")
-        last_epoch = last_meta.get('epochs')[-1]
+    last_epoch, last_meta = get_last_status(model)
 
     checkpoint = MetaCheckpoint('./results/pointnet.h5', monitor='val_acc',
                                 save_weights_only=True, save_best_only=True,
                                 verbose=1, meta=last_meta)
 
     history = model.fit_generator(train.generator(),
-                                  steps_per_epoch=2048 // batch_size,
+                                  steps_per_epoch=9840 // batch_size,
                                   epochs=epochs,
                                   validation_data=val.generator(),
-                                  validation_steps=420 // batch_size,
+                                  validation_steps=2468 // batch_size,
                                   callbacks=[checkpoint, onetenth_50_75(lr)],
                                   verbose=1,
-                                  initial_epoch=last_epoch+1)
+                                  initial_epoch=last_epoch + 1)
 
     plot_history(history, './results/')
     save_history(history, './results/')
     model.save_weights('./results/pointnet_weights.h5')
+
+
+import yaml
+
+
+def load_meta(model_fname):
+    meta = {}
+    with h5py.File(model_fname, 'r') as f:
+        meta_group = f['meta']
+
+        meta['training_args'] = yaml.load(
+            meta_group.attrs['training_args'])
+        for k in meta_group.keys():
+            meta[k] = list(meta_group[k])
+
+    return meta
+
+
+def get_last_status(model):
+    last_epoch = -1
+    last_meta = {}
+    if os.path.exists("./results/pointnet.h5"):
+        model.load_weights("./results/pointnet.h5")
+        last_meta = load_meta("./results/pointnet.h5")
+        last_epoch = last_meta.get('epochs')[-1]
+    return last_epoch, last_meta
 
 
 if __name__ == '__main__':
